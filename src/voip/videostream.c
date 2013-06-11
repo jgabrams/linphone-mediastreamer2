@@ -812,3 +812,10 @@ void video_stream_enable_zrtp(VideoStream *vstream, AudioStream *astream, OrtpZr
 void video_stream_enable_display_filter_auto_rotate(VideoStream* stream, bool_t enable) {
     stream->display_filter_auto_rotate_enabled = enable;
 }
+
+void video_stream_set_display_name(VideoStream *stream, char* name){
+	if(stream->display_name){
+		free(stream->display_name);
+	}
+	stream->display_name=ms_strdup(name);
+}

@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 #include "ffmpeg-priv.h"
+#include "ffmpeg_lock.h"
 
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/msvideo.h"
@@ -352,7 +353,9 @@ static void enc_preprocess(MSFilter *f){
 		ms_error("could not find encoder for codec id %i",s->codec);
 		return;
 	}
+	ms_mutex_lock(&ffmpeg_avcodec_open_close_global_mutex);
 	error=avcodec_open(&s->av_context, s->av_codec);
+	ms_mutex_unlock(&ffmpeg_avcodec_open_close_global_mutex);
 	if (error!=0) {
 		ms_error("avcodec_open() failed: %i",error);
 		return;
@@ -366,7 +369,9 @@ static void enc_preprocess(MSFilter *f){
 static void enc_postprocess(MSFilter *f){
 	EncState *s=(EncState*)f->data;
 	if (s->av_context.codec!=NULL){
+		ms_mutex_lock(&ffmpeg_avcodec_open_close_global_mutex);
 		avcodec_close(&s->av_context);
+		ms_mutex_unlock(&ffmpeg_avcodec_open_close_global_mutex);
 		s->av_context.codec=NULL;
 	}
 	if (s->comp_buf!=NULL)	{

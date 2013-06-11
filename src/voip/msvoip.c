@@ -145,6 +145,7 @@ NULL
 
 #ifdef VIDEO_ENABLED
 
+extern MSWebCamDesc video_player_desc;
 #ifdef MS2_FILTERS
 
 #ifdef HAVE_LINUX_VIDEODEV_H
@@ -212,6 +213,7 @@ static MSWebCamDesc * ms_web_cam_descs[]={
 #if !defined(NO_FFMPEG)
 	&mire_desc,
 #endif
+	&video_player_desc,
 	&static_image_desc,
 #endif /*MS2_FILTERS */
 	NULL

@@ -210,7 +210,11 @@ libmediastreamer_voip_la_SOURCES+=	videofilters/videoenc.c \
 					utils/ffmpeg-priv.h \
 					utils/ffmpeg-priv.c \
 					videofilters/h264dec.c \
-					videofilters/jpegwriter.c
+					videofilters/jpegwriter.c \
+					utils/ffmpeg_lock.c \
+					utils/ffmpeg_lock.h \
+					videofilters/msvideo_player.c \
+					videofilters/msvideo_recorder.c
 endif
 
 if BUILD_SDL

@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 #include "ffmpeg-priv.h"
+#include "ffmpeg_lock.h"
 
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/msvideo.h"
@@ -95,7 +96,9 @@ static void dec_snow_init(MSFilter *f){
 static void dec_uninit(MSFilter *f){
 	DecState *s=(DecState*)f->data;
 	if (s->av_context.codec!=NULL){
+		ms_mutex_lock(&ffmpeg_avcodec_open_close_global_mutex);
 		avcodec_close(&s->av_context);
+		ms_mutex_unlock(&ffmpeg_avcodec_open_close_global_mutex);
 		s->av_context.codec=NULL;
 	}
 	if (s->input!=NULL) freemsg(s->input);
@@ -135,7 +138,9 @@ static void dec_preprocess(MSFilter *f){
 	if (s->av_context.codec==NULL){
 		/* we must know picture size before initializing snow decoder*/
 		if (s->codec!=CODEC_ID_SNOW){
+			ms_mutex_lock(&ffmpeg_avcodec_open_close_global_mutex);
 			error=avcodec_open(&s->av_context, s->av_codec);
+			ms_mutex_unlock(&ffmpeg_avcodec_open_close_global_mutex);
 			if (error!=0) ms_error("avcodec_open() failed: %i",error);
 			if (s->codec==CODEC_ID_MPEG4 && s->dci_size>0){
 				s->av_context.extradata=s->dci;
@@ -225,7 +230,9 @@ static mblk_t * parse_snow_header(DecState *s,mblk_t *inm){
 			int error;
 			s->av_context.width=h>>16;
 			s->av_context.height=h&0xffff;
+			ms_mutex_lock(&ffmpeg_avcodec_open_close_global_mutex);
 			error=avcodec_open(&s->av_context, s->av_codec);
+			ms_mutex_unlock(&ffmpeg_avcodec_open_close_global_mutex);
 			if (error!=0) ms_error("avcodec_open() failed for snow: %i",error);
 			else {
 				s->snow_initialized=TRUE;
