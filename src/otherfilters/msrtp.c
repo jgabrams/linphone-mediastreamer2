@@ -50,6 +50,9 @@ struct SenderData {
 	bool_t skip;
 	bool_t mute_mic;
 	bool_t use_task;
+	int max_frame_size;
+	int next_max_frame_size;
+	int frames_since_last;
 };
 
 typedef struct SenderData SenderData;
@@ -62,6 +65,7 @@ static void send_stun_packet(RtpSession *s)
 	char buf[STUN_MAX_MESSAGE_SIZE];
 	int len = STUN_MAX_MESSAGE_SIZE;
 
+	if(s->rtp.is_dccp){return;}
 	memset(&msg, 0, sizeof(StunMessage));
 	stunBuildReqSimple(&msg, NULL, FALSE, FALSE, 1);
 	len = stunEncodeMessage(&msg, buf, len, NULL);
@@ -95,6 +99,9 @@ static void sender_init(MSFilter * f)
 	d->last_ts=0;
 	d->use_task= tmp ? (!!atoi(tmp)) : FALSE;
 	if (d->use_task) ms_message("MSRtpSend will use tasks to send out packet at the beginning of ticks.");
+	d->max_frame_size=0;
+	d->next_max_frame_size=0;
+	d->frames_since_last=0;
 	f->data = d;
 }
 
@@ -347,6 +354,7 @@ static void _sender_process(MSFilter * f)
 
 	mblk_t *im;
 	uint32_t timestamp;
+	int pkts=0;
 
 
 	if (d->relay_session_id_size>0 && 
@@ -380,6 +388,26 @@ static void _sender_process(MSFilter * f)
 			if (d->skip == FALSE && d->mute_mic==FALSE){
 				header = rtp_session_create_packet(s, 12, NULL, 0);
 				rtp_set_markbit(header, mblk_get_marker_info(im));
+				pkts++;
+				if(mblk_get_marker_info(im)){
+					d->frames_since_last++;
+					if(d->next_max_frame_size < pkts){
+						d->next_max_frame_size=pkts;
+						pkts=0;
+					}
+					if(d->next_max_frame_size > d->max_frame_size || d->frames_since_last>999){
+						d->max_frame_size=d->next_max_frame_size;
+						rtp_session_set_dccp_queue_len(s,d->max_frame_size*1.10);
+						d->frames_since_last=0;
+						d->next_max_frame_size=0;
+					}
+				}else{
+					if(pkts > d->max_frame_size*0.9){
+						d->max_frame_size=d->max_frame_size*1.50;
+						rtp_session_set_dccp_queue_len(s,d->max_frame_size);
+						d->frames_since_last=0;
+					}
+				}
 				header->b_cont = im;
 				rtp_session_sendm_with_ts(s, header, timestamp);
 			}else{

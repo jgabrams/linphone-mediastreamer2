@@ -143,6 +143,27 @@ static int audio_bitrate_driver_execute_action(MSBitrateDriver *objbase, const M
 			obj->cur_ptime-=obj->min_ptime;
 			apply_ptime(obj);
 		}else return -1;
+	}else if (action->type==MSRateControlSetBitrate){
+		if (obj->nom_bitrate>0){
+			ms_message("MSAudioBitrateDriver: setting bitrate of codec to %i",action->value);
+			int new_br=action->value;
+			if (ms_filter_call_method(obj->encoder,MS_FILTER_SET_BITRATE,&new_br)!=0){
+				if (ms_filter_call_method(obj->encoder,MS_FILTER_GET_BITRATE,&obj->cur_bitrate)!=0){
+					ms_message("MSAudioBitrateDriver: Encoder has current bitrate %i",obj->cur_bitrate);
+				}
+				if (action->value > obj->cur_bitrate){
+					if (obj->cur_ptime>obj->min_ptime){
+						obj->cur_ptime-=obj->min_ptime;
+						apply_ptime(obj);
+					}else{
+						return -1;
+					}
+				}else{
+					ms_message("MSAudioBitrateDriver: SET_BITRATE failed, incrementing ptime");
+					inc_ptime(obj);
+				}
+			}
+		}
 	}
 	return 0;
 }
@@ -176,21 +197,30 @@ typedef struct _MSAVBitrateDriver{
 	MSBitrateDriver *audio_driver;
 	MSFilter *venc;
 	int nom_bitrate;
+	int bitrate_limit;
 	int cur_bitrate;
+	int set_hold;
 }MSAVBitrateDriver;
 
 static int dec_video_bitrate(MSAVBitrateDriver *obj, const MSRateControlAction *action){
 	int new_br;
 	
 	ms_filter_call_method(obj->venc,MS_FILTER_GET_BITRATE,&obj->cur_bitrate);
-	new_br=((float)obj->cur_bitrate)*(100.0-(float)action->value)/100.0;
+
+	if(obj->nom_bitrate > obj->cur_bitrate){
+		obj->nom_bitrate=obj->cur_bitrate;
+	}
+	if(obj->nom_bitrate*10 < obj->cur_bitrate){
+		obj->nom_bitrate=obj->cur_bitrate/2;
+	}
+	new_br=((float)obj->nom_bitrate)*(100.0-(float)action->value)/100.0;
 	if (new_br<min_video_bitrate){
 		ms_message("MSAVBitrateDriver: reaching low bound.");
 		new_br=min_video_bitrate;
 	}
+	obj->nom_bitrate=obj->cur_bitrate=new_br;
 	ms_message("MSAVBitrateDriver: targeting %i bps for video encoder.",new_br);
 	ms_filter_call_method(obj->venc,MS_FILTER_SET_BITRATE,&new_br);
-	obj->cur_bitrate=new_br;
 	return new_br==min_video_bitrate ? -1 : 0;
 }
 
@@ -198,26 +228,62 @@ static int inc_video_bitrate(MSAVBitrateDriver *obj, const MSRateControlAction *
 	int newbr;
 	int ret=0;
 	
-	newbr=(float)obj->cur_bitrate*(1.0+((float)action->value/100.0));
-	if (newbr>obj->nom_bitrate){
-		newbr=obj->nom_bitrate;
+	ms_filter_call_method(obj->venc,MS_FILTER_GET_BITRATE,&obj->cur_bitrate);
+	if(obj->nom_bitrate*10 < obj->cur_bitrate){
+		obj->nom_bitrate=obj->cur_bitrate/2;
+	}
+	if(obj->nom_bitrate > obj->cur_bitrate*10){
+		obj->nom_bitrate=obj->cur_bitrate*2;
+	}
+	newbr=(float)obj->nom_bitrate*(1.0+((float)action->value/100.0));
+	if(newbr<min_video_bitrate){
+		ret=-1;
+		newbr=min_video_bitrate;
+	}
+	if(newbr > obj->bitrate_limit){
+		newbr=obj->bitrate_limit;
 		ret=-1;
 	}
-	obj->cur_bitrate=newbr;
+	obj->nom_bitrate=obj->cur_bitrate=newbr;
 	ms_message("MSAVBitrateDriver: increasing bitrate to %i bps for video encoder.",obj->cur_bitrate);
 	ms_filter_call_method(obj->venc,MS_FILTER_SET_BITRATE,&obj->cur_bitrate);
+	return ret;
+}
+
+static int set_video_bitrate(MSAVBitrateDriver *obj, const MSRateControlAction *action){
+	int ret=0;
+	int proposed_bitrate;
+
+	proposed_bitrate=action->value*0.9; //leave 10% for fluctuations
+	obj->set_hold++;
+	if(proposed_bitrate < min_video_bitrate){
+		proposed_bitrate=min_video_bitrate;
+	}
+	if(proposed_bitrate > obj->bitrate_limit){
+		proposed_bitrate=obj->bitrate_limit;
+		ret=-1;
+	}
+	if(obj->set_hold > 4 &&
+			((obj->cur_bitrate - proposed_bitrate > obj->cur_bitrate*0.1) ||
+			 (proposed_bitrate - obj->cur_bitrate > obj->cur_bitrate*0.2))  ){
+		obj->nom_bitrate=obj->cur_bitrate=proposed_bitrate;
+		obj->set_hold=0;
+		ms_message("MSAVBitrateDriver: setting bitrate to %i bps for video encoder.", obj->cur_bitrate);
+		ms_filter_call_method(obj->venc,MS_FILTER_SET_BITRATE,&obj->cur_bitrate);
+	}
 	return ret;
 }
 
 static int av_driver_execute_action(MSBitrateDriver *objbase, const MSRateControlAction *action){
 	MSAVBitrateDriver *obj=(MSAVBitrateDriver*)objbase;
 	int ret=0;
-	if (obj->nom_bitrate==0){
-		ms_filter_call_method(obj->venc,MS_FILTER_GET_BITRATE,&obj->nom_bitrate);
-		if (obj->nom_bitrate==0){
+	if (obj->bitrate_limit==0){
+		ms_filter_call_method(obj->venc,MS_FILTER_GET_BITRATE,&obj->bitrate_limit);
+		if (obj->bitrate_limit==0){
 			ms_warning("MSAVBitrateDriver: Not doing adaptive rate control on video encoder, it does not seem to support that.");
 			return -1;
 		}
+		obj->nom_bitrate=obj->bitrate_limit;
 	}
 	
 	switch(action->type){
@@ -228,12 +294,17 @@ static int av_driver_execute_action(MSBitrateDriver *objbase, const MSRateContro
 			if (obj->audio_driver){
 				ret=ms_bitrate_driver_execute_action(obj->audio_driver,action);
 			}
+			ret=dec_video_bitrate(obj,action);
 		break;
 		case MSRateControlActionIncreaseQuality:
 			ret=inc_video_bitrate(obj,action);
 		break;
 		case MSRateControlActionDoNothing:
 		break;
+		case MSRateControlSetBitrate:
+			ret=set_video_bitrate(obj,action);
+		break;
+
 	}
 	return ret;
 }
@@ -255,6 +326,7 @@ MSBitrateDriver *ms_av_bitrate_driver_new(MSFilter *aenc, MSFilter *venc){
 	obj->parent.desc=&av_bitrate_driver;
 	obj->audio_driver=(aenc!=NULL) ? ms_bitrate_driver_ref(ms_audio_bitrate_driver_new(aenc)) : NULL;
 	obj->venc=venc;
+	obj->set_hold=0;
 	
 	return (MSBitrateDriver*)obj;
 }

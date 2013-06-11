@@ -43,7 +43,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 MSTickerPrio __ms_get_default_prio(bool_t is_video);
 
-MEDIASTREAMER2_INTERNAL_EXPORT RtpSession * create_duplex_rtpsession(int loc_rtp_port, int loc_rtcp_port, bool_t ipv6);
+MEDIASTREAMER2_INTERNAL_EXPORT RtpSession * create_duplex_rtpsession(int loc_rtp_port, int loc_rtcp_port, bool_t ipv6, bool_t dccp, int ccid);
 
 void start_ticker(MediaStream *stream);
 

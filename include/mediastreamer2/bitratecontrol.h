@@ -40,6 +40,7 @@ enum _MSRateControlActionType{
 	MSRateControlActionDecreaseBitrate,
 	MSRateControlActionDecreasePacketRate,
 	MSRateControlActionIncreaseQuality,
+	MSRateControlSetBitrate,
 };
 
 typedef enum _MSRateControlActionType MSRateControlActionType;
@@ -79,6 +80,7 @@ typedef struct _MSQosAnalyser MSQosAnalyser;
 typedef struct _MSQosAnalyserDesc MSQosAnalyserDesc;
 
 struct _MSQosAnalyserDesc{
+	bool_t (*process_rejected_send)(MSQosAnalyser *obj);
 	bool_t (*process_rtcp)(MSQosAnalyser *obj, mblk_t *rtcp);
 	void (*suggest_action)(MSQosAnalyser *obj, MSRateControlAction *action);
 	bool_t (*has_improved)(MSQosAnalyser *obj);
@@ -99,6 +101,7 @@ void ms_qos_analyser_unref(MSQosAnalyser *obj);
 void ms_qos_analyser_suggest_action(MSQosAnalyser *obj, MSRateControlAction *action);
 bool_t ms_qos_analyser_has_improved(MSQosAnalyser *obj);
 bool_t ms_qos_analyser_process_rtcp(MSQosAnalyser *obj, mblk_t *rtcp);
+bool_t ms_qos_analyser_process_rejected_send(MSQosAnalyser *obj);
 
 /**
  * The simple qos analyzer is an implementation of MSQosAnalyser that performs analysis for single stream.
@@ -123,7 +126,7 @@ typedef struct _MSBitrateController MSBitrateController;
  * @param driver a bitrate driver object.
  * The newly created bitrate controller owns references to the analyser and the driver.
 **/
-MSBitrateController *ms_bitrate_controller_new(MSQosAnalyser *qosanalyser, MSBitrateDriver *driver);
+MSBitrateController *ms_bitrate_controller_new(MSQosAnalyser *qosanalyser, MSBitrateDriver *driver, RtpSession *session);
 
 /**
  * Asks the bitrate controller to process a newly received RTCP packet.
@@ -135,6 +138,20 @@ MSBitrateController *ms_bitrate_controller_new(MSQosAnalyser *qosanalyser, MSBit
 **/
 void ms_bitrate_controller_process_rtcp(MSBitrateController *obj, mblk_t *rtcp);
 
+
+/**
+ * Asks the bitrate controller to process a newly received local send rejection notice.
+ * @param MSBitrateController the bitrate controller object.
+**/
+void ms_bitrate_controller_process_rejected_send(MSBitrateController *obj);
+
+/**
+ * Asks the bitrate controller to update the bandwidth to the supplied value
+ * @param MSBitrateController the bitrate controller object.
+ * @param The bandwidth (in bits/sec) to update to.
+**/
+void ms_bitrate_controler_process_bandwidth_update(MSBitrateController *obj, int value);
+
 /**
  * Destroys the bitrate controller
  * 
@@ -142,7 +159,6 @@ void ms_bitrate_controller_process_rtcp(MSBitrateController *obj, mblk_t *rtcp);
  * then they will be destroyed too.
 **/
 void ms_bitrate_controller_destroy(MSBitrateController *obj);
-
 
 /**
  * Convenience function to create a bitrate controller managing a single audio stream.

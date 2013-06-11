@@ -280,9 +280,10 @@ static int ms_mtu=MS_MTU_DEFAULT;
 
 void ms_set_mtu(int mtu){
 	/*60= IPv6+UDP+RTP overhead */
+	/*100=IPv6+DCCP+RTP overhead*/
 	if (mtu>60){
 		ms_mtu=mtu;
-		ms_set_payload_max_size(mtu-60);
+		ms_set_payload_max_size(mtu-100);
 	}else {
 		if (mtu>0){
 			ms_warning("MTU is too short: %i bytes, using default value instead.",mtu);

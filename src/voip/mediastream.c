@@ -116,10 +116,16 @@ MSTickerPrio __ms_get_default_prio(bool_t is_video) {
 #endif
 }
 
-RtpSession * create_duplex_rtpsession(int loc_rtp_port, int loc_rtcp_port, bool_t ipv6) {
+RtpSession * create_duplex_rtpsession(int loc_rtp_port, int loc_rtcp_port, bool_t ipv6, bool_t dccp, int ccid) {
 	RtpSession *rtpr;
 
 	rtpr = rtp_session_new(RTP_SESSION_SENDRECV);
+	if(dccp){
+		rtp_session_set_use_dccp(rtpr,TRUE);
+		if(ccid > 0){
+			rtp_session_set_dccp_ccid(rtpr,ccid);
+		}
+	}
 	rtp_session_set_recv_buf_size(rtpr, ms_get_mtu());
 	rtp_session_set_scheduling_mode(rtpr, 0);
 	rtp_session_set_blocking_mode(rtpr, 0);

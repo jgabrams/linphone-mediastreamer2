@@ -113,6 +113,8 @@ typedef struct EncState{
 	uint32_t framenum;
 	VideoStarter starter;
 	bool_t req_vfu;
+	int bw;
+	bool_t bw_first;
 }EncState;
 
 static int enc_set_fps(MSFilter *f, void *arg){
@@ -220,6 +222,8 @@ static void enc_init(MSFilter *f, enum CodecID codec)
 	s->req_vfu=FALSE;
 	s->framenum=0;
 	s->av_context.codec=NULL;
+	s->bw=s->maxbr;
+	s->bw_first=FALSE;
 }
 
 static void enc_h263_init(MSFilter *f){
@@ -809,6 +813,7 @@ static void process_frame(MSFilter *f, mblk_t *inm){
 			ms_message("Emitting I-frame");
 		}
 		comp_buf->b_wptr+=error;
+		s->bw=0.99*(s->bw)+0.01*(error*8*s->fps);
 		split_and_send(f,s,comp_buf);
 	}
 	freemsg(inm);
@@ -831,7 +836,12 @@ static void enc_process(MSFilter *f){
 
 static int enc_get_br(MSFilter *f, void *arg){
 	EncState *s=(EncState*)f->data;
-	*(int*)arg=s->maxbr;
+	if(s->bw <= 0 || s->bw_first==FALSE){
+		*(int*)arg=s->maxbr;
+		s->bw_first=TRUE;
+	}else{
+		*(int*)arg=s->bw;
+	}
 	return 0;
 }
 
