@@ -34,6 +34,14 @@ bool_t ms_qos_analyser_process_rtcp(MSQosAnalyser *obj,mblk_t *msg){
 	return FALSE;
 }
 
+bool_t ms_qos_analyser_process_rejected_send(MSQosAnalyser *obj){
+	if (obj->desc->process_rejected_send){
+		return obj->desc->process_rejected_send(obj);
+	}
+	ms_error("Unimplemented process_rejected_send() call.");
+	return FALSE;
+}
+
 void ms_qos_analyser_suggest_action(MSQosAnalyser *obj, MSRateControlAction *action){
 	if (obj->desc->suggest_action){
 		obj->desc->suggest_action(obj,action);
@@ -75,6 +83,7 @@ typedef struct rtpstats{
 	float lost_percentage; /*percentage of lost packet since last report*/
 	float int_jitter; /*interrarrival jitter */
 	float rt_prop; /*round trip propagation*/
+	bool_t send_refused;
 }rtpstats_t;
 
 
@@ -88,6 +97,8 @@ const char *ms_rate_control_action_type_name(MSRateControlActionType t){
 			return "DecreaseBitrate";
 		case MSRateControlActionDecreasePacketRate:
 			return "DecreasePacketRate";
+		case MSRateControlSetBitrate:
+			return "SetBitRate";
 	}
 	return "bad action type";
 }
@@ -100,7 +111,8 @@ typedef struct _MSSimpleQosAnalyser{
 	rtpstats_t stats[STATS_HISTORY];
 	int curindex;
 	bool_t rt_prop_doubled;
-	bool_t pad[3];
+	bool_t send_was_refused;
+	bool_t pad[2];
 }MSSimpleQosAnalyser;
 
 
@@ -127,11 +139,26 @@ static bool_t rt_prop_increased(MSSimpleQosAnalyser *obj){
 	return FALSE;
 }
 
+static bool_t simple_analyser_process_rejected_send(MSQosAnalyser *objbase){
+	MSSimpleQosAnalyser *obj=(MSSimpleQosAnalyser*)objbase;
+	rtpstats_t *cur;
+
+	cur=&obj->stats[obj->curindex % STATS_HISTORY];
+	cur->send_refused=TRUE;
+	obj->send_was_refused=TRUE;
+	return TRUE;
+}
+
 
 static bool_t simple_analyser_process_rtcp(MSQosAnalyser *objbase, mblk_t *rtcp){
 	MSSimpleQosAnalyser *obj=(MSSimpleQosAnalyser*)objbase;
 	rtpstats_t *cur;
 	const report_block_t *rb=NULL;
+
+	if(obj->session->rtp.is_dccp){
+		return TRUE;
+	}
+
 	if (rtcp_is_SR(rtcp)){
 		rb=rtcp_SR_get_report_block(rtcp,0);
 	}else if (rtcp_is_RR(rtcp)){
@@ -169,9 +196,15 @@ static void simple_analyser_suggest_action(MSQosAnalyser *objbase, MSRateControl
 		action->type=MSRateControlActionDecreaseBitrate;
 		action->value=20;
 		ms_message("MSQosAnalyser: rt_prop doubled.");
+	}else if (cur->send_refused){
+		action->type=MSRateControlActionDecreaseBitrate;
+		action->value=30;
+		ms_message("MSQosAnalyser: send refused, cut bitrate");
+		cur->send_refused=FALSE;
 	}else if (cur->lost_percentage>=unacceptable_loss_rate){
 		/*big loss rate but no jitter, and no big rtp_prop: pure lossy network*/
 		action->type=MSRateControlActionDecreasePacketRate;
+		action->value=20; /*For video, this is equivalent to Decreasing bitrate*/
 		ms_message("MSQosAnalyser: loss rate unacceptable.");
 	}else{
 		action->type=MSRateControlActionDoNothing;
@@ -184,16 +217,28 @@ static bool_t simple_analyser_has_improved(MSQosAnalyser *objbase){
 	rtpstats_t *cur=&obj->stats[obj->curindex % STATS_HISTORY];
 	rtpstats_t *prev=&obj->stats[(STATS_HISTORY+obj->curindex-1) % STATS_HISTORY];
 
+	if(cur->send_refused==TRUE){
+		goto end;
+	}
 	if (prev->lost_percentage>=unacceptable_loss_rate){
 		if (cur->lost_percentage<prev->lost_percentage){
 			ms_message("MSQosAnalyser: lost percentage has improved");
 			return TRUE;
 		}else goto end;
 	}
-	if (obj->rt_prop_doubled && cur->rt_prop<prev->rt_prop){
-		ms_message("MSQosAnalyser: rt prop decrased");
-		obj->rt_prop_doubled=FALSE;
-		return TRUE;
+	if (obj->rt_prop_doubled){
+		if(cur->rt_prop<prev->rt_prop){
+			ms_message("MSQosAnalyser: rt prop decrased");
+			obj->rt_prop_doubled=FALSE;
+			return TRUE;
+		}else goto end;
+	}
+
+	if (obj->send_was_refused){
+		if(cur->send_refused==FALSE){
+			obj->send_was_refused=FALSE;
+			return TRUE;
+		}else goto end;
 	}
 
 end:
@@ -202,6 +247,7 @@ end:
 }
 
 static MSQosAnalyserDesc simple_analyser_desc={
+	simple_analyser_process_rejected_send,
 	simple_analyser_process_rtcp,
 	simple_analyser_suggest_action,
 	simple_analyser_has_improved

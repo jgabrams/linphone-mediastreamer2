@@ -21,8 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
 #include "mediastreamer2/bitratecontrol.h"
-
+#define DCCP_ADJUSTMENT_WAIT_MSEC 40
 static const int probing_up_interval=10;
+
 
 enum state_t{
 	Init,
@@ -47,17 +48,26 @@ struct _MSBitrateController{
 	enum state_t state;
 	int stable_count;
 	int probing_up_count;
-	
+	struct timeval last_change;
+	int adjust_wait;
 };
 
-MSBitrateController *ms_bitrate_controller_new(MSQosAnalyser *qosanalyser, MSBitrateDriver *driver){
+MSBitrateController *ms_bitrate_controller_new(MSQosAnalyser *qosanalyser, MSBitrateDriver *driver, RtpSession *session){
 	MSBitrateController *obj=ms_new0(MSBitrateController,1);
 	obj->analyser=ms_qos_analyser_ref(qosanalyser);
 	obj->driver=ms_bitrate_driver_ref(driver);
+	obj->last_change.tv_sec=0;
+	obj->last_change.tv_usec=0;
+	if(session->rtp.is_dccp){
+		obj->adjust_wait=DCCP_ADJUSTMENT_WAIT_MSEC;
+	}else{
+		obj->adjust_wait=0;
+	}
 	return obj;
 }
 
 static int execute_action(MSBitrateController *obj, const MSRateControlAction *action){
+	gettimeofday(&obj->last_change,NULL);
 	return ms_bitrate_driver_execute_action(obj->driver,action);
 }
 
@@ -119,9 +129,51 @@ static void state_machine(MSBitrateController *obj){
 
 
 void ms_bitrate_controller_process_rtcp(MSBitrateController *obj, mblk_t *rtcp){
+	struct timeval tm;
+	long msec;
+	gettimeofday(&tm,NULL);
+	msec=(tm.tv_sec- obj->last_change.tv_sec)*1000;
+	msec+=(tm.tv_usec- obj->last_change.tv_usec)/1000;
+	if(msec <= obj->adjust_wait){
+		return;
+	}
+
 	if (ms_qos_analyser_process_rtcp(obj->analyser,rtcp)){
 		state_machine(obj);
 	}
+}
+
+void ms_bitrate_controller_process_rejected_send(MSBitrateController *obj){
+	struct timeval tm;
+	long msec;
+	gettimeofday(&tm,NULL);
+	msec=(tm.tv_sec- obj->last_change.tv_sec)*1000;
+	msec+=(tm.tv_usec- obj->last_change.tv_usec)/1000;
+	if(msec <= obj->adjust_wait){
+		return;
+	}
+
+	if(ms_qos_analyser_process_rejected_send(obj->analyser)){
+		state_machine(obj);
+	}
+}
+
+void ms_bitrate_controler_process_bandwidth_update(MSBitrateController *obj, int value){
+	MSRateControlAction action;
+	struct timeval tm;
+	long msec;
+	gettimeofday(&tm,NULL);
+	msec=(tm.tv_sec- obj->last_change.tv_sec)*1000;
+	msec+=(tm.tv_usec- obj->last_change.tv_usec)/1000;
+	if(msec <= obj->adjust_wait){
+		return;
+	}
+
+	obj->state=Stable;
+	obj->stable_count=0;
+	action.type=MSRateControlSetBitrate;
+	action.value=value;
+	execute_action(obj,&action);
 }
 
 void ms_bitrate_controller_destroy(MSBitrateController *obj){
@@ -133,13 +185,13 @@ void ms_bitrate_controller_destroy(MSBitrateController *obj){
 MSBitrateController *ms_audio_bitrate_controller_new(RtpSession *session, MSFilter *encoder, unsigned int flags){
 	return ms_bitrate_controller_new(
 	                                 ms_simple_qos_analyser_new(session),
-	                                 ms_audio_bitrate_driver_new(encoder));
+	                                 ms_audio_bitrate_driver_new(encoder), session);
 }
 
 MSBitrateController *ms_av_bitrate_controller_new(RtpSession *asession, MSFilter *aenc, RtpSession *vsession, MSFilter *venc){
 	return ms_bitrate_controller_new(
 	                                 ms_simple_qos_analyser_new(vsession),
-	                                 ms_av_bitrate_driver_new(aenc,venc));
+	                                 ms_av_bitrate_driver_new(aenc,venc), vsession);
 }
 
 
