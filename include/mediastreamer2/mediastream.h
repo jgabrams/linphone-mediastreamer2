@@ -446,6 +446,7 @@ MS2_PUBLIC unsigned long video_stream_get_native_preview_window_id(VideoStream *
 MS2_PUBLIC void video_stream_use_preview_video_window(VideoStream *stream, bool_t yesno);
 MS2_PUBLIC void video_stream_set_device_rotation(VideoStream *stream, int orientation);
 MS2_PUBLIC void video_stream_show_video(VideoStream *stream, bool_t show);
+MS2_PUBLIC void video_stream_set_display_name(VideoStream *stream, char* name);
 
 /**
  * @brief Gets the camera sensor rotation.
