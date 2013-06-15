@@ -524,7 +524,7 @@ void ms_usleep(uint64_t usec){
 #endif
 }
 
-#define DEFAULT_MAX_PAYLOAD_SIZE 1440
+#define DEFAULT_MAX_PAYLOAD_SIZE 1400
 
 static int max_payload_size=DEFAULT_MAX_PAYLOAD_SIZE;
 
