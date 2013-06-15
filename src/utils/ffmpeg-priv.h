@@ -35,10 +35,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 /* new layout */
 # include <libavcodec/avcodec.h>
 # include <libavutil/avutil.h>
+# include <libavformat/avformat.h>
+# include <libswscale/swscale.h>
+# include <libavutil/imgutils.h>
 #else
 /* old layout */
 # include <ffmpeg/avcodec.h>
 # include <ffmpeg/avutil.h>
+# include <ffmpeg/avformat.h>
+# include <ffmpeg/swscale.h>
+# include <ffmpeg/imgutils.h>
 #endif
 
 #if defined(HAVE_LIBSWSCALE_SWSCALE_H)
@@ -52,23 +58,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #  include "swscale.h"
 #endif
 
-
-#if LIBAVCODEC_VERSION_INT <= AV_VERSION_INT(52,24,0)
-/*should work as long as nobody uses avformat.h*/
-typedef struct AVPacket{
-	uint8_t *data;
-	int size;
-}AVPacket;
-
-static inline void av_init_packet(AVPacket *pkt){
-	
-}
-static inline int avcodec_decode_video2(AVCodecContext *avctx, AVFrame *picture,
-                         int *got_picture_ptr,
-                         AVPacket *avpkt){
-	return avcodec_decode_video(avctx,picture, got_picture_ptr,avpkt->data,avpkt->size);
-}
-#endif
 #if (LIBAVCODEC_VERSION_MAJOR >= 56)
 #include <libavcodec/old_codec_ids.h>
 #endif

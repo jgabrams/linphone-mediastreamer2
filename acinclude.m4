@@ -106,7 +106,7 @@ AC_DEFUN([MS_CHECK_VIDEO],[
 
 		if test "$ffmpeg" = "true"; then
 			dnl test for ffmpeg presence
-			PKG_CHECK_MODULES(FFMPEG, [libavcodec >= 51.0.0 ],ffmpeg_found=yes , ffmpeg_found=no)
+			PKG_CHECK_MODULES(FFMPEG, [libavcodec >= 52.24.0 ] libavformat libavcodec,ffmpeg_found=yes , ffmpeg_found=no)
 			if test x$ffmpeg_found = xno ; then
 			   AC_MSG_ERROR([Could not find libavcodec (from ffmpeg) headers and library. This is mandatory for video support])
 			fi
