@@ -118,6 +118,11 @@ void video_stream_iterate(VideoStream *stream){
 				video_steam_process_rtcp(stream,evd->packet);
 			}else if ((evt == ORTP_EVENT_STUN_PACKET_RECEIVED) && (stream->ms.ice_check_list)) {
 				ice_handle_stun_packet(stream->ms.ice_check_list,stream->ms.session,ortp_event_get_data(ev));
+			}else if(evt==ORTP_EVENT_SEND_REJECTED && stream->ms.rc){
+				ms_bitrate_controller_process_rejected_send(stream->ms.rc);
+			}else if(evt==ORTP_EVENT_BANDWIDTH && stream->ms.rc){
+				OrtpEventData *evd=ortp_event_get_data(ev);
+				ms_bitrate_controler_process_bandwidth_update(stream->ms.rc, evd->info.bandwidth);
 			}
 			ortp_event_destroy(ev);
 		}
