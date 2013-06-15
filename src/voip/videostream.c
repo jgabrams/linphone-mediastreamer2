@@ -32,7 +32,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <ortp/zrtp.h>
 
-
 void video_stream_free(VideoStream *stream) {
 	/* Prevent filters from being destroyed two times */
 	if (stream->source_performs_encoding == TRUE) {
@@ -148,10 +147,10 @@ static void choose_display_name(VideoStream *stream){
 #endif
 }
 
-VideoStream *video_stream_new(int loc_rtp_port, int loc_rtcp_port, bool_t use_ipv6){
+VideoStream *video_stream_new(int loc_rtp_port, int loc_rtcp_port, bool_t use_ipv6, bool_t dccp, int ccid){
 	VideoStream *stream = (VideoStream *)ms_new0 (VideoStream, 1);
 	stream->ms.type = VideoStreamType;
-	stream->ms.session=create_duplex_rtpsession(loc_rtp_port,loc_rtcp_port,use_ipv6);
+	stream->ms.session=create_duplex_rtpsession(loc_rtp_port,loc_rtcp_port,use_ipv6, dccp, ccid);
 	stream->ms.qi=ms_quality_indicator_new(stream->ms.session);
 	stream->ms.evq=ortp_ev_queue_new();
 	stream->ms.rtpsend=ms_filter_new(MS_RTP_SEND_ID);

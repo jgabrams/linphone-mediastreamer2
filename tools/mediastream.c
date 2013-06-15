@@ -613,7 +613,7 @@ void setup_media_streams(MediastreamDatas* args) {
 				ms_snd_card_manager_get_card(manager,args->capture_card);
 		MSSndCard *play= args->playback_card==NULL ? ms_snd_card_manager_get_default_playback_card(manager) :
 				ms_snd_card_manager_get_card(manager,args->playback_card);
-		args->audio=audio_stream_new(args->localport,args->localport+1,ms_is_ipv6(args->ip));
+		args->audio=audio_stream_new(args->localport,args->localport+1,ms_is_ipv6(args->ip),FALSE,0);
 		audio_stream_enable_automatic_gain_control(args->audio,args->agc);
 		audio_stream_enable_noise_gate(args->audio,args->use_ng);
 		audio_stream_set_echo_canceller_params(args->audio,args->ec_len_ms,args->ec_delay_ms,args->ec_framesize);
@@ -706,7 +706,7 @@ void setup_media_streams(MediastreamDatas* args) {
 			exit(-1);
 		}
 		ms_message("Starting video stream.\n");
-		args->video=video_stream_new(args->localport, args->localport+1, ms_is_ipv6(args->ip));
+		args->video=video_stream_new(args->localport, args->localport+1, ms_is_ipv6(args->ip),FALSE,0);
 #ifdef ANDROID
 		if (args->device_rotation >= 0)
 			video_stream_set_device_rotation(args->video, args->device_rotation);
